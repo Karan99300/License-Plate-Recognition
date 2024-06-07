@@ -1,6 +1,7 @@
 from ultralytics import YOLO
 import cv2
 from sort.sort import *
+from utils import *
 
 #load two models to detect vehicle and then detect license plates
 vehicle_detector =YOLO("yolov8n.pt")
@@ -36,17 +37,23 @@ while ret:
         
         #license plate detection
         license_plates=license_plate_detector(frame)[0]
-        for license_plate in license_plates.data.tolist(): 
+        for license_plate in license_plates.boxes.data.tolist(): 
             x1,y1,x2,y2,conf_score,class_index=license_plate
             
             #assign license plate to car
+            x1_car,y1_car,x2_car,y2_car,car_id=get_car(license_plate,track_vehicles)
             
             #crop license plate
+            license_plate_crop=frame[int(y1):int(y2),int(x1):int(x2),:]
             
             #process license plate
+            license_plate_crop_gray = cv2.cvtColor(license_plate_crop, cv2.COLOR_BGR2GRAY)
+            _, license_plate_crop_threshed = cv2.threshold(license_plate_crop_gray, 64, 255, cv2.THRESH_BINARY_INV)
             
             #read license plate
+            license_plate_text,license_plate_score=read_license_plate(license_plate_crop_threshed)
             
             #update results
-                
+
+
             
