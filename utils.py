@@ -65,37 +65,41 @@ def format_license(text):
 
     return formatted_plate
 
+def write_csv(results, output_path):
+    
+    with open(output_path, 'w') as f:
+        f.write('{},{},{},{},{},{},{},{}\n'.format(
+            'frame_number', 'track_id', 'car_bbox', 'car_bbox_score',
+            'license_plate_bbox', 'license_plate_bbox_score', 'license_plate_number',
+            'license_text_score'))
 
-def write_csv(results,output_path):
-    with open(output_path,'w') as f:
-        f.write('{},{},{},{},{},{},{}\n'.format('frame_number', 'car_id', 'car_bbox',
-                                                'license_plate_bbox', 'license_plate_bbox_score', 'license_number',
-                                                'license_number_score'))
-        
         for frame_number in results.keys():
-            for car_id in results[frame_number].keys():
-                print(results[frame_number][car_id])
-                if 'car' in results[frame_number][car_id].keys() and \
-                'license_plate' in results[frame_number][car_id].keys() and \
-                'text' in results[frame_number][car_id]['license_plate'].keys():
-                    f.write('{},{},{},{},{},{},{}\n'.format(frame_number,
-                                                            car_id,
-                                                            '[{} {} {} {}]'.format(
-                                                                results[frame_number][car_id]['car']['bbox'][0],
-                                                                results[frame_number][car_id]['car']['bbox'][1],
-                                                                results[frame_number][car_id]['car']['bbox'][2],
-                                                                results[frame_number][car_id]['car']['bbox'][3]),
-                                                            '[{} {} {} {}]'.format(
-                                                                results[frame_number][car_id]['license_plate']['bbox'][0],
-                                                                results[frame_number][car_id]['license_plate']['bbox'][1],
-                                                                results[frame_number][car_id]['license_plate']['bbox'][2],
-                                                                results[frame_number][car_id]['license_plate']['bbox'][3]),
-                                                            results[frame_number][car_id]['license_plate']['bbox_score'],
-                                                            results[frame_number][car_id]['license_plate']['text'],
-                                                            results[frame_number][car_id]['license_plate']['text_score'])
-                            )
+            for track_id in results[frame_number].keys():
+                print(results[frame_number][track_id])
+                if 'car' in results[frame_number][track_id].keys() and \
+                   'license_plate' in results[frame_number][track_id].keys() and \
+                   'number' in results[frame_number][track_id]['license_plate'].keys():
+                    f.write('{},{},{},{},{},{},{},{}\n'.format(
+                        frame_number,
+                        track_id,
+                        '[{} {} {} {}]'.format(
+                            results[frame_number][track_id]['car']['bbox'][0],
+                            results[frame_number][track_id]['car']['bbox'][1],
+                            results[frame_number][track_id]['car']['bbox'][2],
+                            results[frame_number][track_id]['car']['bbox'][3]
+                        ),
+                        results[frame_number][track_id]['car']['bbox_score'],
+                        '[{} {} {} {}]'.format(
+                            results[frame_number][track_id]['license_plate']['bbox'][0],
+                            results[frame_number][track_id]['license_plate']['bbox'][1],
+                            results[frame_number][track_id]['license_plate']['bbox'][2],
+                            results[frame_number][track_id]['license_plate']['bbox'][3]
+                        ),
+                        results[frame_number][track_id]['license_plate']['bbox_score'],
+                        results[frame_number][track_id]['license_plate']['number'],
+                        results[frame_number][track_id]['license_plate']['text_score'])
+                    )
         f.close()
-
 
 def get_car(license_plate,tracked_vehicles):
     """
@@ -124,7 +128,7 @@ def get_car(license_plate,tracked_vehicles):
     
     return -1,-1,-1,-1,-1
 
-def read_license_plate(license_plate_crop_threshed):
+def read_license_plate(license_plate_crop):
     """
     Read the license plate
 
@@ -134,14 +138,13 @@ def read_license_plate(license_plate_crop_threshed):
     Returns:
         tuple: returns license plate text and confidence score
     """
-    detections=reader.readtext(license_plate_crop_threshed)
-    
+    detections = reader.readtext(license_plate_crop)
+
     for detection in detections:
-        bbox,text,score=detection
+        bbox, text, score = detection
+
+        text = text.upper().replace(' ', '')
         
-        text=text.upper().replace(' ','')
-        
-        if license_plate_format(text):
-            return format_license(text),score
-        
-    return None,None
+        return text, score
+
+    return None, None

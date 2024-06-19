@@ -1,72 +1,76 @@
 from ultralytics import YOLO
 import cv2
-from sort.sort import *
 from utils import *
 
-#load two models to detect vehicle and then detect license plates
-vehicle_detector =YOLO("yolov8n.pt")
-license_plate_detector =YOLO("train4/weights/best.pt")
+# regular pre-trained yolov8 model for car recognition
+# coco_model = YOLO('yolov8n.pt')
+coco_model = YOLO('yolov8s.pt')
+# yolov8 model trained to detect number plates
+np_model = YOLO('train4/weights/best.pt')
 
-#stock video to check performance
-cap=cv2.VideoCapture('istockphoto-1425716386-640_adpp_is.mp4')
-
-#class indices of vehicle
-#car,motorbike,bus and truck
-vehicles=[2,3,5,7]
+video_path='istockphoto-1425716386-640_adpp_is.mp4'
+video=cv2.VideoCapture(video_path)
 
 results={}
 
-#read the frames of the video
-frame_number= -1
 ret=True
+frame_number =-1
 
-vehicle_tracker=Sort()
+# all vehicle class IDs from the COCO dataset (car, motorbike,bus, truck) https://docs.ultralytics.com/datasets/detect/coco/#dataset-yaml
+vehicles = [2,3,5,7]
+vehicle_bounding_boxes = []
 
 while ret:
     frame_number+=1
-    ret,frame=cap.read() 
+    ret,frame=video.read()
+    
     if ret and frame_number<10:
         results[frame_number]={}
-        detections=vehicle_detector(frame)[0]
-        vehicle_detections=[]
-        for detection in detections.boxes.data.tolist():
-            #detection shape --> x1,y1,x2,y2,conf_score,class
-            x1,y1,x2,y2,conf_score_car,class_index=detection
-            if int(class_index) in vehicles:
-                vehicle_detections.append([x1,y1,x2,y2,conf_score_car])
-                
-        #vehicle tracking
-        track_vehicles=vehicle_tracker.update(np.asarray(vehicle_detections))
+        detections=coco_model.track(frame,persist=True)[0]
         
-        #license plate detection
-        license_plates=license_plate_detector(frame)[0]
-        for license_plate in license_plates.boxes.data.tolist(): 
-            x1,y1,x2,y2,conf_score_license,class_index=license_plate
-            
-            #assign license plate to car
-            x1_car,y1_car,x2_car,y2_car,car_id=get_car(license_plate,track_vehicles)
-            
-            if car_id!=1:
-                #crop license plate
-                license_plate_crop=frame[int(y1):int(y2),int(x1):int(x2),:]
+        #Car Detection
+        for detection in detections.boxes.data.tolist():
+            x1, y1, x2, y2, track_id, score, class_id = detection
+            # I am only interested in class IDs that belong to vehicles
+            if int(class_id) in vehicles and score > 0.5:
+                vehicle_bounding_boxes.append([x1, y1, x2, y2, track_id, score])
                 
-                #process license plate
-                license_plate_crop_gray = cv2.cvtColor(license_plate_crop, cv2.COLOR_BGR2GRAY)
-                _, license_plate_crop_threshed = cv2.threshold(license_plate_crop_gray, 64, 255, cv2.THRESH_BINARY_INV)
-                
-                #read license plate
-                license_plate_text,license_plate_text_score=read_license_plate(license_plate_crop_threshed)
-                
-                if license_plate_text is not None:
-                    results[frame_number][car_id]={
-                        'car':{'bbox':[x1_car,y1_car,x2_car,y2_car]},
-                        'license_plate':{'bbox':[x1,y1,x2,y2],
-                                        'text':license_plate_text,
-                                        'bbox_score':conf_score_license,
-                                        'text_score':license_plate_text_score}
-                    }
-            
-#update results
-write_csv(results,'sample_result.csv')
-
-            
+                #License Plate detection
+                for bbox in vehicle_bounding_boxes:
+                    #print(bbox)
+                    roi = frame[int(y1):int(y2), int(x1):int(x2)]
+                    license_plates=np_model(roi)[0]
+                    
+                    for license_plate in license_plates.boxes.data.tolist():
+                        plate_x1, plate_y1, plate_x2, plate_y2, plate_score, _ = license_plate
+                        #print(license_plate, 'track_id: ' + str(bbox[4]))
+                        plate = roi[int(plate_y1):int(plate_y2), int(plate_x1):int(plate_x2)]
+                        #cv2.imwrite(str(track_id) + '.jpg', plate)
+                        # de-colorize
+                        plate_gray=cv2.cvtColor(plate,cv2.COLOR_BGR2GRAY)
+                        #posterize
+                        #_, plate_threshold = cv2.threshold(plate_gray, 64, 255, cv2.THRESH_BINARY_INV)
+                        #cv2.imwrite(str(track_id) + '_gray.jpg', plate_gray)
+                        #cv2.imwrite(str(track_id) + '_thresh.jpg', plate_threshold)            
+                        
+                        #OCR License plate reader
+                        np_text,np_score=read_license_plate(plate_gray)
+                        print(np_text)
+                        print(np_score)
+                        
+                        if np_text is not None:
+                            results[frame_number][track_id]={
+                                'car':{
+                                    'bbox':[x1,y1,x2,y2],
+                                    'bbox_score':score
+                                },
+                                'license_plate':{
+                                    'bbox': [plate_x1, plate_y1, plate_x2, plate_y2],
+                                    'bbox_score': plate_score,
+                                    'number': np_text,
+                                    'text_score': np_score
+                                }
+                            }
+                            
+write_csv(results, 'results.csv')            
+video.release()
